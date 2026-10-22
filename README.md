@@ -3,12 +3,7 @@
 Agent vitals for the [Herdr](https://herdr.dev) sidebar: each Claude Code agent's context window usage, git branch
 and running subagents, plus a per-space agent count with a working/blocked breakdown.
 
-```
-Agents                                Spaces
-▶ working  my-app feature/login       ● my-app 5 agents
-  Refactor auth middleware              feature/login ✓ 2 working 1 blocked
-  ▰▰▰▱▱▱▱▱ 41%  ⧉ 2 subagents
-```
+<img src="docs/sidebar.png" alt="Herdr sidebar with herdr-vitals: per-space agent counts with a working count, and per-agent git branch, context usage bars, and a running subagent count" width="282">
 
 Everything is published as Herdr metadata tokens (`$ctx`, `$branch`, `$subagents`, `$agents`, ...), so where and how
 each value appears is up to your `config.toml`. Herdr's agent rows have no built-in branch token (only space rows
