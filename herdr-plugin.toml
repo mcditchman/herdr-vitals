@@ -1,0 +1,28 @@
+# Herdr Vitals plugin manifest.
+
+id = "mcditchman.vitals"
+name = "Vitals"
+version = "0.1.0"
+min_herdr_version = "0.9.0"
+description = "Agent vitals in the Herdr sidebar: context usage, git branch, running subagents, and per-space agent counts"
+platforms = ["linux", "macos", "windows"]
+
+# Built at install/link time; Go is the only requirement. Windows has its own
+# pair so the binary carries the .exe extension.
+[[build]]
+platforms = ["linux", "macos"]
+command = ["go", "build", "-o", "herdr-vitals", "./cmd/herdr-vitals"]
+
+[[build]]
+platforms = ["windows"]
+command = ["go", "build", "-o", "herdr-vitals.exe", "./cmd/herdr-vitals"]
+
+# A one-shot launch: the process stays alive by itself and leaves when another
+# Herdr server takes the socket.
+[[startup]]
+platforms = ["linux", "macos"]
+command = ["./herdr-vitals"]
+
+[[startup]]
+platforms = ["windows"]
+command = ["./herdr-vitals.exe"]
