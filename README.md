@@ -72,7 +72,7 @@ The plugin starts with the Herdr server. Then show the tokens in `config.toml`:
 [ui.sidebar.agents.rows_by_agent]
 claude = [
   ["state_icon", "state_text", "workspace", { token = "$branch", fg = "#a3be8c" }],
-  ["terminal_title_stripped"],
+  [{ token = "tab", fg = "#d5c4a1", bold = true }],
   [{ token = "$ctx", fg = "#88c0d0" }, { token = "$subagents", fg = "#b48ead" }, { token = "$monitors", fg = "#d08770" }]
 ]
 ```
