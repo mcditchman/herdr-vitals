@@ -27,6 +27,7 @@ const (
 	DefaultBranch   = "branch"
 	DefaultAgents   = "agents"
 	DefaultSubagent = "subagents"
+	DefaultMonitors = "monitors"
 	// maxAgentsToken leaves room for "_working"/"_blocked" within Herdr's
 	// 32-character token names.
 	maxAgentsToken = 32 - max(len(workingSuffix), len(blockedSuffix))
@@ -46,6 +47,9 @@ type Config struct {
 	// SubagentsToken is the token a Claude agent's running subagent count is
 	// published under, only while it has any; empty turns it off.
 	SubagentsToken string
+	// MonitorsToken is the token a Claude agent's running Monitor count is
+	// published under, only while it has any; empty turns it off.
+	MonitorsToken string
 	// AgentsToken is the workspace token each space's agent count is
 	// published under, shown in space rows as "$<AgentsToken>"; empty turns
 	// it off.
@@ -66,6 +70,7 @@ func DefaultConfig() Config {
 		Token:          DefaultToken,
 		BranchToken:    DefaultBranch,
 		SubagentsToken: DefaultSubagent,
+		MonitorsToken:  DefaultMonitors,
 		AgentsToken:    DefaultAgents,
 		DefaultWindow:  usage.OneMillion,
 	}
@@ -78,6 +83,7 @@ type fileConfig struct {
 	Token          *string          `json:"token"`
 	BranchToken    *string          `json:"branch_token"`
 	SubagentsToken *string          `json:"subagents_token"`
+	MonitorsToken  *string          `json:"monitors_token"`
 	AgentsToken    *string          `json:"agents_token"`
 	DefaultWindow  *int64           `json:"default_window"`
 	Windows        map[string]int64 `json:"windows"`
@@ -148,6 +154,8 @@ func apply(cfg Config, file fileConfig) (Config, []string) {
 	cfg.BranchToken = optionalToken(warn, "branch_token", file.BranchToken, cfg.BranchToken, cfg.Token)
 	cfg.SubagentsToken = optionalToken(warn, "subagents_token", file.SubagentsToken, cfg.SubagentsToken,
 		cfg.Token, cfg.BranchToken)
+	cfg.MonitorsToken = optionalToken(warn, "monitors_token", file.MonitorsToken, cfg.MonitorsToken,
+		cfg.Token, cfg.BranchToken, cfg.SubagentsToken)
 	if agents := optionalToken(warn, "agents_token", file.AgentsToken, cfg.AgentsToken); len(agents) <= maxAgentsToken {
 		cfg.AgentsToken = agents
 	} else {

@@ -237,11 +237,27 @@ func agentCount(n int) string {
 	return plural(n, "agent")
 }
 
-// subagentMark sets a subagent count apart from the context bar beside it.
-const subagentMark = "⧉ "
+// The marks set a subagent or monitor count apart from the context bar
+// beside it.
+const (
+	subagentMark = "⧉ "
+	monitorMark  = "⦿ "
+)
 
 func subagentCount(n int) string {
 	return subagentMark + plural(n, "subagent")
+}
+
+func monitorCount(n int) string {
+	return monitorMark + plural(n, "monitor")
+}
+
+// setCount publishes a running count under token, only while it is above
+// zero and the token is on.
+func setCount(tokens map[string]string, token string, n int, label func(int) string) {
+	if token != "" && n > 0 {
+		tokens[token] = label(n)
+	}
 }
 
 func plural(n int, noun string) string {
@@ -276,9 +292,8 @@ func (a *App) tokensFor(pane herdr.PaneInfo) (map[string]string, string) {
 			window := usage.WindowFor(read.Model, a.cfg.Windows, a.cfg.DefaultWindow)
 			tokens[a.cfg.Token] = usage.Bar(usage.Percent(read.Tokens, window), a.cfg.BarWidth)
 
-			if a.cfg.SubagentsToken != "" && read.Subagents > 0 {
-				tokens[a.cfg.SubagentsToken] = subagentCount(read.Subagents)
-			}
+			setCount(tokens, a.cfg.SubagentsToken, read.Subagents, subagentCount)
+			setCount(tokens, a.cfg.MonitorsToken, read.Monitors, monitorCount)
 
 			// Where Claude itself works beats the pane's shell directory.
 			if read.Cwd != "" {

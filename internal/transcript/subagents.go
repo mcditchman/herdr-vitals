@@ -63,6 +63,7 @@ type contentBlock struct {
 	ID        string          `json:"id"`
 	Name      string          `json:"name"`
 	ToolUseID string          `json:"tool_use_id"`
+	Input     json.RawMessage `json:"input"`
 	Content   json.RawMessage `json:"content"`
 }
 
@@ -76,31 +77,40 @@ var (
 	transcriptDirLine  = regexp.MustCompile(`(?m)^Transcript dir: (.+?)\s*$`)
 )
 
-// absorbLaunches records Agent and Workflow tool_use blocks as running.
-func (s *session) absorbLaunches(content json.RawMessage, now time.Time) {
+// absorbLaunches records Agent, Workflow and Monitor tool_use blocks as
+// running, and TaskStop calls aimed at a running monitor. at is when the line
+// was written.
+func (s *session) absorbLaunches(content json.RawMessage, at, now time.Time) {
 	var blocks []contentBlock
 	if json.Unmarshal(content, &blocks) != nil {
 		return
 	}
 
 	for _, b := range blocks {
-		if b.Type != "tool_use" || b.ID == "" || (b.Name != toolAgent && b.Name != toolWorkflow) {
+		if b.Type != "tool_use" || b.ID == "" {
 			continue
 		}
 
-		if s.running == nil {
-			s.running = make(map[string]*launch)
-		}
+		switch b.Name {
+		case toolAgent, toolWorkflow:
+			if s.running == nil {
+				s.running = make(map[string]*launch)
+			}
 
-		s.running[b.ID] = &launch{workflow: b.Name == toolWorkflow, seen: now}
+			s.running[b.ID] = &launch{workflow: b.Name == toolWorkflow, seen: now}
+		case toolMonitor:
+			s.startMonitor(b, at)
+		case toolTaskStop:
+			s.trackStop(b)
+		}
 	}
 }
 
 // absorbLifecycle handles a line that is not an assistant line but may end a
-// launch. Only lines that could matter are decoded: user lines carry tool
-// results that can be megabytes.
+// launch or monitor, or name a monitor's task. Only lines that could matter
+// are decoded: user lines carry tool results that can be megabytes.
 func (s *session) absorbLifecycle(line []byte) {
-	if len(s.running) == 0 {
+	if len(s.running) == 0 && len(s.monitors) == 0 {
 		return
 	}
 
@@ -109,10 +119,10 @@ func (s *session) absorbLifecycle(line []byte) {
 			delete(s.running, string(m[1]))
 		}
 
-		return
+		s.endNotifiedMonitors(line)
 	}
 
-	if !bytes.Contains(line, toolResultMarker) || !s.mentionsRunning(line) {
+	if !bytes.Contains(line, toolResultMarker) || !s.awaitsResultIn(line) {
 		return
 	}
 
@@ -121,6 +131,7 @@ func (s *session) absorbLifecycle(line []byte) {
 		Message struct {
 			Content json.RawMessage `json:"content"`
 		} `json:"message"`
+		ToolUseResult json.RawMessage `json:"toolUseResult"`
 	}
 	if json.Unmarshal(line, &e) != nil || e.Type != "user" {
 		return
@@ -132,8 +143,22 @@ func (s *session) absorbLifecycle(line []byte) {
 	}
 
 	for _, b := range blocks {
+		if b.Type != "tool_result" {
+			continue
+		}
+
+		if m, ok := s.monitors[b.ToolUseID]; ok && m.awaitingResult {
+			s.absorbMonitorResult(b.ToolUseID, textOf(b.Content), e.ToolUseResult)
+			continue
+		}
+
+		if _, ok := s.stops[b.ToolUseID]; ok {
+			s.absorbStopResult(b.ToolUseID, textOf(b.Content))
+			continue
+		}
+
 		l, ok := s.running[b.ToolUseID]
-		if b.Type != "tool_result" || !ok {
+		if !ok {
 			continue
 		}
 
@@ -149,8 +174,22 @@ func (s *session) absorbLifecycle(line []byte) {
 	}
 }
 
-func (s *session) mentionsRunning(line []byte) bool {
+// awaitsResultIn reports whether line names a tool_use whose result is
+// awaited: a running launch, a monitor not yet started, or a TaskStop.
+func (s *session) awaitsResultIn(line []byte) bool {
 	for id := range s.running {
+		if bytes.Contains(line, []byte(id)) {
+			return true
+		}
+	}
+
+	for id, m := range s.monitors {
+		if m.awaitingResult && bytes.Contains(line, []byte(id)) {
+			return true
+		}
+	}
+
+	for id := range s.stops {
 		if bytes.Contains(line, []byte(id)) {
 			return true
 		}

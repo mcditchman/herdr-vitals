@@ -1,11 +1,11 @@
 # herdr-vitals
 
 Agent vitals for the [Herdr](https://herdr.dev) sidebar: each Claude Code agent's context window usage, git branch
-and running subagents, plus a per-space agent count with a working/blocked breakdown.
+running subagents and monitors, plus a per-space agent count with a working/blocked breakdown.
 
 <img src="docs/sidebar.png" alt="Herdr sidebar with herdr-vitals: per-space agent counts with a working count, and per-agent git branch, context usage bars, and a running subagent count" width="282">
 
-Everything is published as Herdr metadata tokens (`$ctx`, `$branch`, `$subagents`, `$agents`, ...), so where and how
+Everything is published as Herdr metadata tokens (`$ctx`, `$branch`, `$subagents`, `$monitors`, `$agents`, ...), so where and how
 each value appears is up to your `config.toml`. Herdr's agent rows have no built-in branch token (only space rows
 do), which is why the plugin publishes one.
 
@@ -28,6 +28,13 @@ parent process, so they are tracked from the parent transcript:
   until its notification;
 - a launch whose own transcript has been quiet for 10 minutes (a crashed or killed parent) stops counting, and is
   forgotten after an hour.
+
+It also publishes `monitors` (`⦿ 1 monitor`) while any `Monitor` watch is running, tracked the same way:
+
+- a `Monitor` call counts from the call until its script exits (a notification with a status), its expiry notice, or
+  a `TaskStop` of its task that succeeded. Event notifications do not end it;
+- every monitor also stops counting at its timeout (Claude Code caps it at 30 minutes), timed from the call's
+  timestamp, because a timeout can leave no transcript marker.
 
 For every space it publishes the workspace token `agents`: the number of panes running any agent, e.g. `5 agents`.
 It also publishes `agents_working` (`2 working`) and `agents_blocked` (`1 blocked`), each only while its count is
@@ -66,7 +73,7 @@ The plugin starts with the Herdr server. Then show the tokens in `config.toml`:
 claude = [
   ["state_icon", "state_text", "workspace", { token = "$branch", fg = "#a3be8c" }],
   ["terminal_title_stripped"],
-  [{ token = "$ctx", fg = "#88c0d0" }, { token = "$subagents", fg = "#b48ead" }]
+  [{ token = "$ctx", fg = "#88c0d0" }, { token = "$subagents", fg = "#b48ead" }, { token = "$monitors", fg = "#d08770" }]
 ]
 ```
 
@@ -83,6 +90,7 @@ Optional `config.json` in `herdr plugin config-dir mcditchman.vitals`. Invalid v
 | `token` | `"ctx"` | Context usage token name, referenced as `$<token>` in sidebar rows |
 | `branch_token` | `"branch"` | Git branch token name; `""` turns branch publishing off |
 | `subagents_token` | `"subagents"` | Running subagent count token name; `""` turns it off |
+| `monitors_token` | `"monitors"` | Running `Monitor` watch count token name; `""` turns it off |
 | `agents_token` | `"agents"` | Workspace token with each space's agent count (`3 agents`), for `[ui.sidebar.spaces]` rows; the breakdown tokens are named `<agents_token>_working` / `_blocked`. Max 24 characters; `""` turns all three off |
 | `default_window` | `1000000` | Window for models not otherwise known |
 | `windows` | `{}` | Window overrides by model id prefix, longest match wins, e.g. `{"claude-opus-5-5": 1000000}` |

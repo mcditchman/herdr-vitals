@@ -1,6 +1,6 @@
 // Package transcript reads how much context a Claude Code session is holding,
-// and how many subagents it has running, from the transcript it appends to
-// (~/.claude/projects/<slug>/<id>.jsonl).
+// and how many subagents and monitors it has running, from the transcript it
+// appends to (~/.claude/projects/<slug>/<id>.jsonl).
 //
 // Every assistant line carries the API usage of the request that produced it,
 // and input + cache read + cache creation tokens is the context the model saw.
@@ -47,6 +47,8 @@ type Context struct {
 	Cwd string
 	// Subagents is how many subagents are running now; see subagents.go.
 	Subagents int
+	// Monitors is how many Monitor watches are running now; see monitors.go.
+	Monitors int
 }
 
 // Reader reads session transcripts, remembering how far it has read each.
@@ -67,6 +69,11 @@ type session struct {
 	searchedAt time.Time
 	// running is every subagent launch not yet seen to end, by tool_use id.
 	running map[string]*launch
+	// monitors is every Monitor call not yet seen to end, by tool_use id.
+	monitors map[string]*monitor
+	// stops is every TaskStop call aimed at a monitor whose result has not
+	// been read: tool_use id to the monitor's task id.
+	stops map[string]string
 }
 
 // NewReader builds a reader over Claude Code's configuration directory: root
@@ -115,8 +122,10 @@ func (r *Reader) Context(sessionID, dir string) (Context, bool) {
 	now := r.now()
 	s.readNew(now)
 	// Counted every call, not only when the transcript grew: a subagent's
-	// liveness also depends on its own transcript and on time passing.
+	// liveness also depends on its own transcript and on time passing, and a
+	// monitor's on its deadline.
 	s.context.Subagents = s.countSubagents(now)
+	s.context.Monitors = s.countMonitors(now)
 
 	return s.context, s.known
 }
@@ -222,7 +231,8 @@ func (s *session) readNew(now time.Time) {
 	case size == s.offset:
 		return
 	case size < s.offset:
-		s.offset, s.context, s.known, s.running = 0, Context{}, false, nil
+		s.offset, s.context, s.known = 0, Context{}, false
+		s.running, s.monitors, s.stops = nil, nil, nil
 	}
 
 	file, err := os.Open(s.path)
@@ -273,6 +283,7 @@ type entry struct {
 	Subtype     string `json:"subtype"`
 	IsSidechain bool   `json:"isSidechain"`
 	Cwd         string `json:"cwd"`
+	Timestamp   string `json:"timestamp"`
 	Message     struct {
 		Model   string          `json:"model"`
 		Content json.RawMessage `json:"content"`
@@ -311,7 +322,7 @@ func (s *session) absorb(lines []byte, now time.Time) {
 		switch {
 		case e.Type == "assistant":
 			s.absorbAssistant(e)
-			s.absorbLaunches(e.Message.Content, now)
+			s.absorbLaunches(e.Message.Content, writtenAt(e.Timestamp, now), now)
 		case e.Type == "system" && e.Subtype == "compact_boundary":
 			if e.CompactMetadata != nil && e.CompactMetadata.PostTokens > 0 {
 				s.context.Tokens, s.known = e.CompactMetadata.PostTokens, true
@@ -334,4 +345,15 @@ func (s *session) absorbAssistant(e entry) {
 	}
 
 	s.context, s.known = Context{Tokens: tokens, Model: e.Message.Model, Cwd: e.Cwd}, true
+}
+
+// writtenAt is when a line was written, from its timestamp, or now when it has
+// none that parses.
+func writtenAt(timestamp string, now time.Time) time.Time {
+	at, err := time.Parse(time.RFC3339Nano, timestamp)
+	if err != nil {
+		return now
+	}
+
+	return at
 }

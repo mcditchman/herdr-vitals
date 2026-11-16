@@ -708,6 +708,43 @@ func TestSubagentCountCanBeTurnedOff(t *testing.T) {
 	mustReport(t, h.takeReports(), "w1:p1", map[string]string{ctxToken: bar41})
 }
 
+func TestMonitorCountShowsOnlyWhileAnyRun(t *testing.T) {
+	h := newHarness(claudePane("w1:p1", session1))
+	h.reader.contexts[session1] = transcript.Context{Tokens: 410_000, Model: "claude-opus-5-5", Monitors: 2}
+
+	h.poll(t)
+	mustReport(t, h.takeReports(), "w1:p1", map[string]string{ctxToken: bar41, DefaultMonitors: "⦿ 2 monitors"})
+
+	h.reader.contexts[session1] = transcript.Context{Tokens: 410_000, Model: "claude-opus-5-5", Monitors: 1}
+	h.poll(t)
+	mustReport(t, h.takeReports(), "w1:p1", map[string]string{ctxToken: bar41, DefaultMonitors: "⦿ 1 monitor"})
+
+	h.reader.contexts[session1] = transcript.Context{Tokens: 410_000, Model: "claude-opus-5-5"}
+	h.poll(t)
+	mustReport(t, h.takeReports(), "w1:p1", map[string]string{ctxToken: bar41, DefaultMonitors: "<nil>"})
+}
+
+func TestMonitorAndSubagentCountsShowSideBySide(t *testing.T) {
+	h := newHarness(claudePane("w1:p1", session1))
+	h.reader.contexts[session1] = transcript.Context{Tokens: 410_000, Model: "claude-opus-5-5", Subagents: 1, Monitors: 1}
+
+	h.poll(t)
+
+	mustReport(t, h.takeReports(), "w1:p1", map[string]string{
+		ctxToken: bar41, DefaultSubagent: "⧉ 1 subagent", DefaultMonitors: "⦿ 1 monitor",
+	})
+}
+
+func TestMonitorCountCanBeTurnedOff(t *testing.T) {
+	h := newHarness(claudePane("w1:p1", session1))
+	h.app.cfg.MonitorsToken = ""
+	h.reader.contexts[session1] = transcript.Context{Tokens: 410_000, Model: "claude-opus-5-5", Monitors: 2}
+
+	h.poll(t)
+
+	mustReport(t, h.takeReports(), "w1:p1", map[string]string{ctxToken: bar41})
+}
+
 func TestPlural(t *testing.T) {
 	tests := []struct {
 		n    int

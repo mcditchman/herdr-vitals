@@ -135,6 +135,35 @@ func TestLoadConfigSubagentsToken(t *testing.T) {
 	}
 }
 
+func TestLoadConfigMonitorsToken(t *testing.T) {
+	tests := []struct {
+		name     string
+		body     string
+		want     string
+		warnings int
+	}{
+		{"default", `{}`, DefaultMonitors, 0},
+		{"renamed", `{"monitors_token": "watch"}`, "watch", 0},
+		{"empty turns it off", `{"monitors_token": ""}`, "", 0},
+		{"invalid name", `{"monitors_token": "has space"}`, DefaultMonitors, 1},
+		{"collides with the usage token", `{"monitors_token": "ctx"}`, DefaultMonitors, 1},
+		{"collides with the branch token", `{"monitors_token": "branch"}`, DefaultMonitors, 1},
+		{"collides with the subagents token", `{"monitors_token": "subagents"}`, DefaultMonitors, 1},
+		{"collides with a renamed subagents token", `{"subagents_token": "s", "monitors_token": "s"}`, DefaultMonitors, 1},
+		{"free once the subagents token moves", `{"subagents_token": "s", "monitors_token": "subagents"}`, "subagents", 0},
+		{"free once the subagents token is off", `{"subagents_token": "", "monitors_token": "subagents"}`, "subagents", 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, warnings := LoadConfig(writeConfig(t, tt.body))
+			if cfg.MonitorsToken != tt.want || len(warnings) != tt.warnings {
+				t.Fatalf("MonitorsToken = %q with %v, want %q with %d warnings", cfg.MonitorsToken, warnings, tt.want, tt.warnings)
+			}
+		})
+	}
+}
+
 func TestLoadConfigAgentsToken(t *testing.T) {
 	tests := []struct {
 		name     string
